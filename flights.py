@@ -1,4 +1,3 @@
-import constants
 from db import Database
 
 db = Database()

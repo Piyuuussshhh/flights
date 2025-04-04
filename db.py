@@ -3,6 +3,8 @@ import os
 import csv
 from dotenv import load_dotenv
 
+from constants import FLIGHTS_COLUMN_NAMES, AIRLINES_COLUMN_NAMES, AIRPORT_COLUMN_NAMES, CC_COLUMN_NAMES
+
 load_dotenv()
 
 class Database:
@@ -41,18 +43,12 @@ class Database:
             Database.connection.close()
             print("Database connection closed.")
 
-    def _upload_csv(self, csv_file, table: str):
-        with open(csv_file, 'r') as f:
-            reader = csv.reader(f)
-            headers = next(reader)  # Skip header row
+    def _upload_csv(self, csv_file, table: str, columns):
+        with open(csv_file, "r") as file:
+            column_list = f"({', '.join(columns)})" if columns else ""
+            self.cursor.copy_expert(f"COPY {table} {column_list} FROM STDIN WITH CSV HEADER NULL ''", file)
 
-            # Build insert query dynamically
-            columns = ", ".join(headers)
-            placeholders = ", ".join(["%s"] * len(headers))
-            insert_query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders});"
-
-            self.cursor.executemany(insert_query, reader)
-            self.connection.commit()
+        self.connection.commit()
 
     def _create_table_flights(self):
         sql = """
@@ -64,37 +60,37 @@ class Database:
                 DAY_OF_WEEK VARCHAR(1) NOT NULL,
                 AIRLINE VARCHAR(2) NOT NULL,
                 FLIGHT_NUMBER VARCHAR(10) NOT NULL,
-                TAIL_NUMBER VARCHAR(10) NOT NULL,
+                TAIL_NUMBER VARCHAR(10),
                 ORIGIN_AIRPORT VARCHAR(5) NOT NULL,
                 DESTINATION_AIRPORT VARCHAR(5) NOT NULL,
                 SCHEDULED_DEPARTURE INTEGER NOT NULL,
-                DEPARTURE_TIME INTEGER NOT NULL,
-                DEPARTURE_DELAY INTEGER NOT NULL,
-                TAXI_OUT INTEGER NOT NULL,
-                WHEELS_OFF INTEGER NOT NULL,
-                SCHEDULED_TIME INTEGER NOT NULL,
-                ELAPSED_TIME INTEGER NOT NULL,
-                AIR_TIME INTEGER NOT NULL,
+                DEPARTURE_TIME REAL,
+                DEPARTURE_DELAY REAL,
+                TAXI_OUT REAL,
+                WHEELS_OFF REAL,
+                SCHEDULED_TIME REAL,
+                ELAPSED_TIME REAL,
+                AIR_TIME REAL,
                 DISTANCE INTEGER NOT NULL,
-                WHEELS_ON INTEGER NOT NULL,
-                TAXI_IN INTEGER NOT NULL,
+                WHEELS_ON REAL,
+                TAXI_IN REAL,
                 SCHEDULED_ARRIVAL INTEGER NOT NULL,
-                ARRIVAL_TIME INTEGER NOT NULL,
-                ARRIVAL_DELAY INTEGER NOT NULL,
+                ARRIVAL_TIME REAL,
+                ARRIVAL_DELAY REAL,
                 DIVERTED BOOLEAN NOT NULL,
                 CANCELLED BOOLEAN NOT NULL,
-                CANCELLATION_REASON CHAR(1) CHECK(CANCELLATION_REASON IN ('A','B','C','D') OR CANCELLATION_REASON = ' '),
-                AIR_SYSTEM_DELAY VARCHAR,
-                SECURITY_DELAY VARCHAR,
-                AIRLINE_DELAY VARCHAR,
-                LATE_AIRCRAFT_DELAY VARCHAR,
-                WEATHER_DELAY VARCHAR
+                CANCELLATION_REASON CHAR(1),
+                AIR_SYSTEM_DELAY REAL,
+                SECURITY_DELAY REAL,
+                AIRLINE_DELAY REAL,
+                LATE_AIRCRAFT_DELAY REAL,
+                WEATHER_DELAY REAL
             );
         """
         self.cursor.execute(sql)
         self.connection.commit()
 
-        self._upload_csv("datasets\\flights.csv", "flights")
+        self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\flights_cleaned.csv", "flights", FLIGHTS_COLUMN_NAMES)
 
     def _create_table_airlines(self):
         sql = """
@@ -107,46 +103,44 @@ class Database:
         self.cursor.execute(sql)
         self.connection.commit()
 
-        self._upload_csv("datasets\\airlines.csv", "airlines")
+        self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\airlines.csv", "airlines", AIRLINES_COLUMN_NAMES)
 
     def _create_table_airports(self):
         sql = """
             CREATE TABLE IF NOT EXISTS airports (
                 id SERIAL PRIMARY KEY,
                 IATA_CODE VARCHAR(5) NOT NULL,
-                AIRPORT VARCHAR(50) NOT NULL,
+                AIRPORT VARCHAR(100) NOT NULL,
                 CITY VARCHAR(50) NOT NULL,
                 STATE VARCHAR(50) NOT NULL,
                 COUNTRY VARCHAR(50) NOT NULL,
-                LATITUDE REAL NOT NULL,
-                LONGITUDE REAL NOT NULL
+                LATITUDE REAL,
+                LONGITUDE REAL
             );
         """
         self.cursor.execute(sql)
         self.connection.commit()
 
-        self._upload_csv("datasets\\airports.csv", "airports")
+        self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\airports.csv", "airports", AIRPORT_COLUMN_NAMES)
 
     def _create_table_cancellation_codes(self):
         sql = """
             CREATE TABLE IF NOT EXISTS cancellation_codes (
                 id SERIAL PRIMARY KEY,
                 CANCELLATION_REASON CHAR(1) CHECK(CANCELLATION_REASON IN ('A','B','C','D')) NOT NULL,
-                CANCELLATION_DESCRIPTION VARCHAR(50) NOT NULL,
+                CANCELLATION_DESCRIPTION VARCHAR(50) NOT NULL
             );
         """
         self.cursor.execute(sql)
         self.connection.commit()
 
-        self._upload_csv("datasets\\cancellation_codes.csv", "cancellation_codes")
+        self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\cancellation_codes.csv", "cancellation_codes", CC_COLUMN_NAMES)
 
     def _create_table_main(self):
         sql = """
             CREATE TABLE IF NOT EXISTS main AS
                 SELECT
-                    f.YEAR,
-                    f.MONTH,
-                    f.DAY,
+                    MAKE_DATE(f.YEAR::INTEGER, f.MONTH::INTEGER, f.DAY::INTEGER) AS FLIGHT_DATE,
                     f.DAY_OF_WEEK,
                     f.AIRLINE,
                     al.AIRLINE as AIRLINE_NAME,
@@ -172,20 +166,20 @@ class Database:
                     f.ARRIVAL_DELAY,
                     f.DIVERTED,
                     f.CANCELLED,
-                    CANCELLATION_REASON CHAR(1) CHECK(NULLIF(CANCELLATION_REASON, '') IS NULL OR CANCELLATION_REASON IN ('A', 'B', 'C', 'D')) AS CANCELLATION_REASON,
+                    f.CANCELLATION_REASON,
                     cc.CANCELLATION_DESCRIPTION,
-                    NULLIF(f.AIR_SYSTEM_DELAY, '')::INTEGER AS AIR_SYSTEM_DELAY,
-                    NULLIF(f.SECURITY_DELAY, '')::INTEGER AS SECURITY_DELAY,
-                    NULLIF(f.AIRLINE_DELAY, '')::INTEGER AS AIRLINE_DELAY,
-                    NULLIF(f.LATE_AIRCRAFT_DELAY, '')::INTEGER AS LATE_AIRCRAFT_DELAY,
-                    NULLIF(f.WEATHER_DELAY, '')::INTEGER AS WEATHER_DELAY
+                    f.AIR_SYSTEM_DELAY,
+                    f.SECURITY_DELAY,
+                    f.AIRLINE_DELAY,
+                    f.LATE_AIRCRAFT_DELAY,
+                    f.WEATHER_DELAY
                 FROM flights f
                     INNER JOIN airlines al
-                        ON f.AIRLINE = al.AIRLINE
+                        ON f.AIRLINE = al.IATA_CODE
                     INNER JOIN airports ap1
-                        on f.ORIGIN_AIRPORT = ap1.AIRPORT
+                        on f.ORIGIN_AIRPORT = ap1.IATA_CODE
                     INNER JOIN airports ap2
-                        on f.DESTINATION_AIRPORT = ap2.AIRPORT
+                        on f.DESTINATION_AIRPORT = ap2.IATA_CODE
                     LEFT JOIN cancellation_codes cc
                         on f.CANCELLATION_REASON = cc.CANCELLATION_REASON
         """
