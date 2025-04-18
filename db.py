@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 
-from constants import FLIGHTS_COLUMN_NAMES, AIRLINES_COLUMN_NAMES, AIRPORT_COLUMN_NAMES, CC_COLUMN_NAMES
+from constants import AIRLINES_COLUMN_NAMES, AIRPORT_COLUMN_NAMES, CC_COLUMN_NAMES
 
 load_dotenv()
 
@@ -28,7 +28,6 @@ class Database:
             print("Error connecting to database:", e)
 
     def close(self):
-        """Closes the cursor and connection."""
         if Database.cursor:
             Database.cursor.close()
         if Database.connection:
@@ -41,48 +40,6 @@ class Database:
             self.cursor.copy_expert(f"COPY {table} {column_list} FROM STDIN WITH CSV HEADER NULL ''", file)
 
         self.connection.commit()
-
-    # def _create_table_flights(self):
-    #     sql = """
-    #         CREATE TABLE IF NOT EXISTS flights (
-    #             id SERIAL PRIMARY KEY,
-    #             YEAR VARCHAR(4) NOT NULL,
-    #             MONTH VARCHAR(2) NOT NULL,
-    #             DAY VARCHAR(2) NOT NULL,
-    #             DAY_OF_WEEK VARCHAR(1) NOT NULL,
-    #             AIRLINE VARCHAR(2) NOT NULL,
-    #             FLIGHT_NUMBER VARCHAR(10) NOT NULL,
-    #             TAIL_NUMBER VARCHAR(10),
-    #             ORIGIN_AIRPORT VARCHAR(5) NOT NULL,
-    #             DESTINATION_AIRPORT VARCHAR(5) NOT NULL,
-    #             SCHEDULED_DEPARTURE INTEGER NOT NULL,
-    #             DEPARTURE_TIME REAL,
-    #             DEPARTURE_DELAY REAL,
-    #             TAXI_OUT REAL,
-    #             WHEELS_OFF REAL,
-    #             SCHEDULED_TIME REAL,
-    #             ELAPSED_TIME REAL,
-    #             AIR_TIME REAL,
-    #             DISTANCE INTEGER NOT NULL,
-    #             WHEELS_ON REAL,
-    #             TAXI_IN REAL,
-    #             SCHEDULED_ARRIVAL INTEGER NOT NULL,
-    #             ARRIVAL_TIME REAL,
-    #             ARRIVAL_DELAY REAL,
-    #             DIVERTED BOOLEAN NOT NULL,
-    #             CANCELLED BOOLEAN NOT NULL,
-    #             CANCELLATION_REASON CHAR(1),
-    #             AIR_SYSTEM_DELAY REAL,
-    #             SECURITY_DELAY REAL,
-    #             AIRLINE_DELAY REAL,
-    #             LATE_AIRCRAFT_DELAY REAL,
-    #             WEATHER_DELAY REAL
-    #         );
-    #     """
-    #     self.cursor.execute(sql)
-    #     self.connection.commit()
-
-    #     self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\flights_cleaned.csv", "flights", FLIGHTS_COLUMN_NAMES)
 
     def _create_table_dim_airlines(self):
         sql = """
@@ -97,7 +54,7 @@ class Database:
         self.cursor.execute(sql)
         self.connection.commit()
 
-        self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\airlines.csv", "dim_airlines", AIRLINES_COLUMN_NAMES)
+        self._upload_csv("datasets/airlines.csv", "dim_airlines", AIRLINES_COLUMN_NAMES)
 
     def _create_table_dim_airports(self):
         sql = """
@@ -117,7 +74,7 @@ class Database:
         self.cursor.execute(sql)
         self.connection.commit()
 
-        self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\airports.csv", "dim_airports", AIRPORT_COLUMN_NAMES)
+        self._upload_csv("datasets/airports.csv", "dim_airports", AIRPORT_COLUMN_NAMES)
 
     def _create_table_dim_cancellation_codes(self):
         sql = """
@@ -132,7 +89,7 @@ class Database:
         self.cursor.execute(sql)
         self.connection.commit()
 
-        self._upload_csv("C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\cancellation_codes.csv", "dim_cancellation_codes", CC_COLUMN_NAMES)
+        self._upload_csv("datasets/cancellation_codes.csv", "dim_cancellation_codes", CC_COLUMN_NAMES)
 
     def _create_table_dim_dates(self):
         start_date = datetime(2015, 1, 1)
@@ -161,7 +118,6 @@ class Database:
 
     def _create_table_fact_flights(self):
         def to_time(t):
-            """Convert HHMM integer to time"""
             try:
                 t = int(t)
                 hour = t // 100
@@ -174,7 +130,7 @@ class Database:
             if pd.isna(val):
                 return None
             if isinstance(val, (np.generic, np.bool_)):
-                return val.item()  # Convert NumPy scalar to Python native type
+                return val.item()
             return val
 
         self.cursor.execute("""
@@ -253,13 +209,14 @@ class Database:
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
-        csv_path = "C:\\Users\\admin\\Desktop\\Programming\\data_science\\flights_pt2\\datasets\\flights_cleaned.csv"
+        csv_path = "datasets/flights_cleaned.csv"
 
         i = 0
         for chunk in pd.read_csv(csv_path, dtype=dtype_mapping, chunksize=100000):
             chunk['flight_date'] = pd.to_datetime(chunk[['YEAR', 'MONTH', 'DAY']])
 
-            print(f"Inserted {(i + 1) * 100_000} records of fact_flights!")
+            print(f"Inserted {(i) * 100_000} records of fact_flights!")
+            i = i + 1
 
             for row in chunk.itertuples(index=False):
                 try:
@@ -299,12 +256,10 @@ class Database:
                     self.connection.commit()
 
                 except psycopg2.DataError as e:
-                    print("⚠️ Insert failed on row:")
+                    print("Insert failed on row:")
                     print(row)
-                    print("🚨 Error:", e)
+                    print("Error:", e)
                     raise
-
-
 
     def create_tables(self):
         self._create_table_dim_airlines()
@@ -312,6 +267,3 @@ class Database:
         self._create_table_dim_cancellation_codes()
         self._create_table_dim_dates()
         self._create_table_fact_flights()
-
-
-
